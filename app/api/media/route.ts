@@ -1,14 +1,16 @@
+import { findCollection } from '@/db/app';
 import {
   getMediaBindings,
   insertMedia,
   listMedia,
   type MediaRecord,
 } from '@/db/media';
+import { jsonError } from '@/lib/api';
+import { requireApprovedUser } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
 const MAX_UPLOAD_BYTES = 95 * 1024 * 1024;
-
 const ALLOWED_MEDIA = new Map<
   string,
   { type: 'image' | 'video'; extension: string }
@@ -31,21 +33,17 @@ function responseMedia(record: MediaRecord) {
     type: record.media_type,
     contentType: record.content_type,
     size: record.size,
+    uploaderId: record.uploader_id,
+    uploaderName: record.uploader_name,
+    collectionId: record.collection_id,
+    collectionName: record.collection_name,
     createdAt: record.created_at,
     url: `/api/media/${record.id}`,
   };
 }
 
-function jsonError(error: string, status: number) {
-  return Response.json(
-    { error },
-    { status, headers: { 'Cache-Control': 'no-store' } },
-  );
-}
-
 function decodeFilename(value: string | null) {
   if (!value) return '未命名作品';
-
   try {
     const cleanName = Array.from(decodeURIComponent(value))
       .filter((character) => {
@@ -75,18 +73,21 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const user = await requireApprovedUser(request);
+  if (!user) return jsonError('账号尚未登录或未通过审核。', 403);
+  const collectionId = request.headers.get('x-collection-id') ?? '';
+  if (!collectionId) return jsonError('上传前请选择收藏夹。', 400);
+  const collection = await findCollection(collectionId);
+  if (!collection) return jsonError('没有找到所选收藏夹。', 404);
+  if (user.role !== 'admin' && collection.owner_id !== user.id) {
+    return jsonError('你不能上传到这个收藏夹。', 403);
+  }
+
   const contentType =
     request.headers.get('content-type')?.split(';')[0].toLowerCase() ?? '';
   const mediaKind = ALLOWED_MEDIA.get(contentType);
-
-  if (!mediaKind) {
-    return jsonError('仅支持常见的网页图片与视频格式。', 415);
-  }
-
-  if (!request.body) {
-    return jsonError('没有收到文件内容。', 400);
-  }
-
+  if (!mediaKind) return jsonError('仅支持常见的网页图片与视频格式。', 415);
+  if (!request.body) return jsonError('没有收到文件内容。', 400);
   const declaredSize = Number(
     request.headers.get('x-file-size') ??
       request.headers.get('content-length') ??
@@ -96,11 +97,11 @@ export async function POST(request: Request) {
     return jsonError('无法确认文件大小。', 400);
   }
   if (declaredSize > MAX_UPLOAD_BYTES) {
-    return jsonError('单个文件不能超过 95 MB。', 413);
+    return jsonError('单个文件不能超过95MB。', 413);
   }
 
   const id = crypto.randomUUID();
-  const key = `uploads/${id}.${mediaKind.extension}`;
+  const key = `media/${user.id}/${new Date().getUTCFullYear()}/${String(new Date().getUTCMonth() + 1).padStart(2, '0')}/${id}.${mediaKind.extension}`;
   const originalName = decodeFilename(request.headers.get('x-file-name'));
   const createdAt = Date.now();
   const { files } = getMediaBindings();
@@ -112,16 +113,17 @@ export async function POST(request: Request) {
         contentDisposition: `inline; filename*=UTF-8''${encodeURIComponent(originalName)}`,
         cacheControl: 'public, max-age=31536000, immutable',
       },
-      customMetadata: { originalName, mediaType: mediaKind.type },
+      customMetadata: {
+        originalName,
+        mediaType: mediaKind.type,
+        uploaderId: user.id,
+        collectionId,
+      },
     });
-
-    if (!stored) {
-      return jsonError('文件保存失败，请重试。', 500);
-    }
-
+    if (!stored) return jsonError('文件保存失败，请重试。', 500);
     if (stored.size > MAX_UPLOAD_BYTES) {
       await files.delete(key);
-      return jsonError('单个文件不能超过 95 MB。', 413);
+      return jsonError('单个文件不能超过95MB。', 413);
     }
 
     const record: MediaRecord = {
@@ -131,16 +133,19 @@ export async function POST(request: Request) {
       media_type: mediaKind.type,
       content_type: contentType,
       size: stored.size,
+      uploader_id: user.id,
+      uploader_name: user.display_name,
+      collection_id: collection.id,
+      collection_name: collection.name,
       created_at: createdAt,
+      updated_at: createdAt,
     };
-
     try {
       await insertMedia(record);
     } catch (error) {
       await files.delete(key);
       throw error;
     }
-
     return Response.json(
       { media: responseMedia(record) },
       { status: 201, headers: { 'Cache-Control': 'no-store' } },

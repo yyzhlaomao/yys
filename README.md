@@ -10,6 +10,10 @@
 - 视频 Range 请求，支持拖动进度条和断点读取
 - 文件格式、大小与响应头安全检查
 - 首次访问时自动初始化 D1 表；同时保留 Drizzle 迁移文件
+- 独立的公开画廊与上传工作区
+- 自定义收藏夹名称、简介和封面
+- 按收藏夹、日期、图片与视频分类浏览
+- 管理员审核制账号、加密密码和安全会话
 
 ## 从 GitHub 接入 Cloudflare
 
@@ -34,6 +38,20 @@
 | `CLOUDFLARE_R2_BUCKET_NAME` | `yys-media-files`（或实际名称） |
 
 应用使用固定绑定名：D1 为 `DB`，R2 为 `FILES`。构建后生成的 Wrangler 配置会读取以上变量。
+
+## 初始化管理员和登录系统
+
+首次成功部署后，进入 Worker 的 **Settings → Variables and Secrets**，添加：
+
+| 变量 | 类型 | 说明 |
+| --- | --- | --- |
+| `ADMIN_SETUP_TOKEN` | Secret | 至少32位的随机初始化令牌 |
+| `TURNSTILE_SITE_KEY` | Text | Turnstile 前端站点密钥，可稍后配置 |
+| `TURNSTILE_SECRET_KEY` | Secret | Turnstile 服务端密钥，可稍后配置 |
+
+保存变量后访问 `/setup`，输入初始化令牌并创建第一个管理员。创建成功后应删除或更换 `ADMIN_SETUP_TOKEN`。其他用户从 `/register` 提交申请，管理员在 `/admin/users` 审核；只有状态为“已通过”的账号能够进入 `/upload`。
+
+若启用 Turnstile，站点密钥和服务端密钥必须同时配置。项目启用了 `keep_vars`，后续 Git 自动部署会保留控制台中的运行时变量与密钥。
 
 ## 上传限制
 
