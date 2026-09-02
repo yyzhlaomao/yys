@@ -154,6 +154,7 @@ export function AdminUsers() {
                       {user.status !== 'approved' && (
                         <Button
                           className="rounded-full"
+                          type="button"
                           disabled={updating === user.id}
                           onClick={() => void updateStatus(user.id, 'approved')}
                         >
@@ -165,6 +166,7 @@ export function AdminUsers() {
                         <Button
                           className="rounded-full"
                           variant="outline"
+                          type="button"
                           disabled={updating === user.id}
                           onClick={() => void updateStatus(user.id, 'rejected')}
                         >
@@ -176,6 +178,7 @@ export function AdminUsers() {
                         <Button
                           className="rounded-full"
                           variant="destructive"
+                          type="button"
                           disabled={updating === user.id}
                           onClick={() =>
                             void updateStatus(user.id, 'suspended')

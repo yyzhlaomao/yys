@@ -1,5 +1,7 @@
 'use client';
 
+/* oxlint-disable next/no-html-link-for-pages -- Full document navigation avoids Vinext client-router stalls on Cloudflare. */
+
 import {
   ArrowUpFromLine,
   LogIn,
@@ -7,7 +9,6 @@ import {
   Play,
   ShieldCheck,
 } from 'lucide-react';
-import Link from 'next/link';
 import { useEffect, useState } from 'react';
 
 import { buttonVariants } from '@/components/ui/button';
@@ -38,7 +39,7 @@ export function SiteHeader({
   return (
     <header className="sticky top-0 z-40 border-b border-border/70 bg-background/88 backdrop-blur-xl">
       <div className="mx-auto flex min-h-20 max-w-[1500px] items-center justify-between gap-4 px-5 py-3 sm:px-8 lg:px-12">
-        <Link
+        <a
           className="group flex items-center gap-3"
           href="/"
           aria-label="光影集首页"
@@ -54,11 +55,11 @@ export function SiteHeader({
               Media Gallery
             </span>
           </span>
-        </Link>
+        </a>
 
         <nav className="flex items-center gap-2" aria-label="主导航">
           {user?.role === 'admin' && (
-            <Link
+            <a
               className={cn(
                 buttonVariants({ variant: 'ghost' }),
                 'hidden rounded-full sm:inline-flex',
@@ -67,7 +68,7 @@ export function SiteHeader({
             >
               <ShieldCheck data-icon="inline-start" />
               审核
-            </Link>
+            </a>
           )}
           {user ? (
             <>
@@ -90,7 +91,7 @@ export function SiteHeader({
               </button>
             </>
           ) : (
-            <Link
+            <a
               className={cn(
                 buttonVariants({ variant: 'ghost' }),
                 'rounded-full',
@@ -99,9 +100,9 @@ export function SiteHeader({
             >
               <LogIn data-icon="inline-start" />
               登录
-            </Link>
+            </a>
           )}
-          <Link
+          <a
             className={cn(buttonVariants(), 'h-10 rounded-full px-4 shadow-sm')}
             href={
               backToGallery
@@ -113,7 +114,7 @@ export function SiteHeader({
           >
             <ArrowUpFromLine data-icon="inline-start" />
             {backToGallery ? '返回画廊' : '上传作品'}
-          </Link>
+          </a>
         </nav>
       </div>
     </header>

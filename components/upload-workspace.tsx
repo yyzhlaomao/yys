@@ -291,6 +291,7 @@ export function UploadWorkspace() {
                 <Button
                   variant="outline"
                   className="rounded-full"
+                  type="button"
                   onClick={() => setShowCreate((value) => !value)}
                 >
                   <Plus data-icon="inline-start" />
@@ -346,7 +347,11 @@ export function UploadWorkspace() {
                       </small>
                     </span>
                   </button>
-                  <Button className="w-full rounded-xl" disabled={isCreating}>
+                  <Button
+                    className="w-full rounded-xl"
+                    type="submit"
+                    disabled={isCreating}
+                  >
                     {isCreating && <LoaderCircle className="animate-spin" />}
                     创建收藏夹
                   </Button>

@@ -348,6 +348,7 @@ export function MediaGallery() {
               <Button
                 className="mt-5 rounded-full"
                 variant="outline"
+                type="button"
                 onClick={() => setReloadKey((key) => key + 1)}
               >
                 <RefreshCw data-icon="inline-start" />
