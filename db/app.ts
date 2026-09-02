@@ -57,6 +57,23 @@ export function getBindings() {
   return { db: env.DB, files: env.FILES, runtime: env };
 }
 
+type RuntimeTextBinding =
+  | 'ADMIN_SETUP_TOKEN'
+  | 'TURNSTILE_SITE_KEY'
+  | 'TURNSTILE_SECRET_KEY';
+
+export function getRuntimeText(name: RuntimeTextBinding) {
+  const bindingValue = env[name];
+  if (typeof bindingValue === 'string' && bindingValue.length > 0) {
+    return bindingValue;
+  }
+
+  const processValue = process.env[name];
+  return typeof processValue === 'string' && processValue.length > 0
+    ? processValue
+    : undefined;
+}
+
 async function addMissingMediaColumns(db: D1Database) {
   const result = await db
     .prepare('PRAGMA table_info(media)')

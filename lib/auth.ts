@@ -1,4 +1,9 @@
-import { ensureAppSchema, getBindings, type UserRecord } from '@/db/app';
+import {
+  ensureAppSchema,
+  getBindings,
+  getRuntimeText,
+  type UserRecord,
+} from '@/db/app';
 
 const SESSION_COOKIE = 'yys_session';
 const SESSION_MAX_AGE_SECONDS = 30 * 24 * 60 * 60;
@@ -198,8 +203,7 @@ export function validPassword(value: unknown) {
 }
 
 export async function validateTurnstile(request: Request, token: unknown) {
-  const { runtime } = getBindings();
-  const secret = runtime.TURNSTILE_SECRET_KEY;
+  const secret = getRuntimeText('TURNSTILE_SECRET_KEY');
   if (!secret) return true;
   if (typeof token !== 'string' || !token) return false;
   const body = new FormData();

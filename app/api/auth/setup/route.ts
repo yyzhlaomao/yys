@@ -1,4 +1,4 @@
-import { ensureAppSchema, getBindings } from '@/db/app';
+import { ensureAppSchema, getBindings, getRuntimeText } from '@/db/app';
 import { cleanText, jsonError, readJson } from '@/lib/api';
 import {
   createSession,
@@ -24,11 +24,12 @@ export async function POST(request: Request) {
   const body = await readJson(request);
   if (!body) return jsonError('提交内容格式不正确。', 400);
   await ensureAppSchema();
-  const { db, runtime } = getBindings();
-  if (!runtime.ADMIN_SETUP_TOKEN) {
+  const { db } = getBindings();
+  const setupToken = getRuntimeText('ADMIN_SETUP_TOKEN');
+  if (!setupToken) {
     return jsonError('管理员初始化令牌尚未配置。', 503);
   }
-  if (body.setupToken !== runtime.ADMIN_SETUP_TOKEN) {
+  if (body.setupToken !== setupToken) {
     return jsonError('初始化令牌不正确。', 403);
   }
   const existing = await db

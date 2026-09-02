@@ -1,9 +1,9 @@
-import { getBindings } from '@/db/app';
+import { getBindings, getRuntimeText } from '@/db/app';
 
 export function GET() {
-  const { runtime } = getBindings();
+  getBindings();
   return Response.json(
-    { turnstileSiteKey: runtime.TURNSTILE_SITE_KEY ?? null },
+    { turnstileSiteKey: getRuntimeText('TURNSTILE_SITE_KEY') ?? null },
     { headers: { 'Cache-Control': 'public, max-age=300' } },
   );
 }
