@@ -128,3 +128,17 @@ export const auditLogs = sqliteTable(
   },
   (table) => [index('idx_audit_logs_created_at').on(table.createdAt)],
 );
+
+export const loginAttempts = sqliteTable(
+  'login_attempts',
+  {
+    attemptKey: text('attempt_key').primaryKey(),
+    failedCount: integer('failed_count').notNull(),
+    windowStartedAt: integer('window_started_at').notNull(),
+    blockedUntil: integer('blocked_until').notNull(),
+    updatedAt: integer('updated_at').notNull(),
+  },
+  (table) => [
+    index('idx_login_attempts_updated_at').on(table.updatedAt),
+  ],
+);

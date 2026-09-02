@@ -10,6 +10,10 @@ const SESSION_MAX_AGE_SECONDS = 30 * 24 * 60 * 60;
 const PASSWORD_HASH_ALGORITHM = 'pbkdf2-sha256';
 const PASSWORD_ITERATIONS = 40_000;
 const LEGACY_PASSWORD_ITERATIONS = 120_000;
+const LOGIN_ATTEMPT_WINDOW_MS = 15 * 60 * 1000;
+const LOGIN_BLOCK_MS = 15 * 60 * 1000;
+const ACCOUNT_LOGIN_ATTEMPTS = 10;
+const IP_LOGIN_ATTEMPTS = 30;
 
 export type PublicUser = {
   id: string;
@@ -52,6 +56,95 @@ async function sha256(value: string) {
     new TextEncoder().encode(value),
   );
   return bytesToBase64Url(new Uint8Array(digest));
+}
+
+type LoginAttemptKey = {
+  key: string;
+  maximumAttempts: number;
+};
+
+async function getLoginAttemptKeys(request: Request, username: string) {
+  const clientIp = request.headers.get('CF-Connecting-IP')?.trim() || 'unknown';
+  const [accountKey, ipKey] = await Promise.all([
+    sha256(`login-account:${username}`),
+    sha256(`login-ip:${clientIp}`),
+  ]);
+  return [
+    { key: accountKey, maximumAttempts: ACCOUNT_LOGIN_ATTEMPTS },
+    { key: ipKey, maximumAttempts: IP_LOGIN_ATTEMPTS },
+  ] satisfies LoginAttemptKey[];
+}
+
+async function getLoginRetryAfter(
+  db: D1Database,
+  keys: LoginAttemptKey[],
+  now: number,
+) {
+  const result = await db
+    .prepare(`SELECT MAX(blocked_until) AS blocked_until
+      FROM login_attempts
+      WHERE attempt_key IN (?1, ?2) AND blocked_until > ?3`)
+    .bind(keys[0].key, keys[1].key, now)
+    .first<{ blocked_until: number | null }>();
+  const blockedUntil = result?.blocked_until ?? 0;
+  return blockedUntil > now ? Math.ceil((blockedUntil - now) / 1000) : 0;
+}
+
+export async function checkLoginRateLimit(request: Request, username: string) {
+  await ensureAppSchema();
+  const { db } = getBindings();
+  const now = Date.now();
+  const keys = await getLoginAttemptKeys(request, username);
+  return getLoginRetryAfter(db, keys, now);
+}
+
+export async function recordFailedLogin(request: Request, username: string) {
+  await ensureAppSchema();
+  const { db } = getBindings();
+  const now = Date.now();
+  const windowCutoff = now - LOGIN_ATTEMPT_WINDOW_MS;
+  const blockedUntil = now + LOGIN_BLOCK_MS;
+  const keys = await getLoginAttemptKeys(request, username);
+  await db.batch(
+    keys.map(({ key, maximumAttempts }) =>
+      db
+        .prepare(`INSERT INTO login_attempts (
+          attempt_key, failed_count, window_started_at, blocked_until, updated_at
+        ) VALUES (?1, 1, ?2, 0, ?2)
+        ON CONFLICT(attempt_key) DO UPDATE SET
+          failed_count = CASE
+            WHEN login_attempts.window_started_at <= ?3 THEN 1
+            ELSE login_attempts.failed_count + 1
+          END,
+          window_started_at = CASE
+            WHEN login_attempts.window_started_at <= ?3 THEN ?2
+            ELSE login_attempts.window_started_at
+          END,
+          blocked_until = CASE
+            WHEN login_attempts.window_started_at <= ?3 THEN 0
+            WHEN login_attempts.failed_count + 1 >= ?4 THEN ?5
+            ELSE login_attempts.blocked_until
+          END,
+          updated_at = ?2`)
+        .bind(key, now, windowCutoff, maximumAttempts, blockedUntil),
+    ),
+  );
+  return getLoginRetryAfter(db, keys, now);
+}
+
+export async function clearAccountLoginFailures(username: string) {
+  await ensureAppSchema();
+  const { db } = getBindings();
+  const accountKey = await sha256(`login-account:${username}`);
+  const staleCutoff = Date.now() - 24 * 60 * 60 * 1000;
+  await db.batch([
+    db
+      .prepare('DELETE FROM login_attempts WHERE attempt_key = ?1')
+      .bind(accountKey),
+    db
+      .prepare('DELETE FROM login_attempts WHERE updated_at <= ?1')
+      .bind(staleCutoff),
+  ]);
 }
 
 async function derivePasswordHash(

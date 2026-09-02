@@ -163,6 +163,13 @@ export async function ensureAppSchema() {
           details TEXT,
           created_at INTEGER NOT NULL
         )`),
+        db.prepare(`CREATE TABLE IF NOT EXISTS login_attempts (
+          attempt_key TEXT PRIMARY KEY NOT NULL,
+          failed_count INTEGER NOT NULL,
+          window_started_at INTEGER NOT NULL,
+          blocked_until INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL
+        )`),
       ]);
 
       await addMissingMediaColumns(db);
@@ -205,6 +212,9 @@ export async function ensureAppSchema() {
         ),
         db.prepare(
           'CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at)',
+        ),
+        db.prepare(
+          'CREATE INDEX IF NOT EXISTS idx_login_attempts_updated_at ON login_attempts(updated_at)',
         ),
         db.prepare('PRAGMA optimize'),
       ]);
