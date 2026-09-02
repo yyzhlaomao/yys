@@ -18,6 +18,28 @@ import { TurnstileWidget } from '@/components/turnstile-widget';
 
 type Mode = 'login' | 'register' | 'setup';
 
+type AuthPayload = {
+  error?: string;
+  message?: string;
+  user?: { status: string };
+};
+
+async function readAuthPayload(response: Response): Promise<AuthPayload> {
+  const responseText = await response.text();
+  if (!responseText) {
+    return {
+      error: `服务器没有返回完整结果（HTTP ${response.status}）。`,
+    };
+  }
+  try {
+    return JSON.parse(responseText) as AuthPayload;
+  } catch {
+    return {
+      error: `服务器返回了无法识别的结果（HTTP ${response.status}）。`,
+    };
+  }
+}
+
 const copy = {
   login: {
     eyebrow: '欢迎回来',
@@ -91,12 +113,9 @@ export function AuthForm({ mode }: { mode: Mode }) {
           turnstileToken,
         }),
       });
-      const payload = (await response.json()) as {
-        error?: string;
-        message?: string;
-        user?: { status: string };
-      };
+      const payload = await readAuthPayload(response);
       if (!response.ok) throw new Error(payload.error ?? '操作没有完成。');
+      if (payload.error) throw new Error(payload.error);
       if (mode === 'register') {
         setSuccess(payload.message ?? '申请已提交。');
         setPassword('');

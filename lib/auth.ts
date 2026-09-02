@@ -7,7 +7,9 @@ import {
 
 const SESSION_COOKIE = 'yys_session';
 const SESSION_MAX_AGE_SECONDS = 30 * 24 * 60 * 60;
-const PASSWORD_ITERATIONS = 120_000;
+const PASSWORD_HASH_ALGORITHM = 'pbkdf2-sha256';
+const PASSWORD_ITERATIONS = 40_000;
+const LEGACY_PASSWORD_ITERATIONS = 120_000;
 
 export type PublicUser = {
   id: string;
@@ -52,10 +54,11 @@ async function sha256(value: string) {
   return bytesToBase64Url(new Uint8Array(digest));
 }
 
-export async function hashPassword(password: string, salt?: string) {
-  const saltBytes = salt
-    ? base64UrlToBytes(salt)
-    : crypto.getRandomValues(new Uint8Array(16));
+async function derivePasswordHash(
+  password: string,
+  saltBytes: BufferSource,
+  iterations: number,
+) {
   const key = await crypto.subtle.importKey(
     'raw',
     new TextEncoder().encode(password),
@@ -68,13 +71,39 @@ export async function hashPassword(password: string, salt?: string) {
       name: 'PBKDF2',
       hash: 'SHA-256',
       salt: saltBytes,
-      iterations: PASSWORD_ITERATIONS,
+      iterations,
     },
     key,
     256,
   );
+  return bytesToBase64Url(new Uint8Array(bits));
+}
+
+function readStoredPasswordHash(value: string) {
+  const [algorithm, iterationsText, digest, extra] = value.split('$');
+  const iterations = Number(iterationsText);
+  if (
+    algorithm === PASSWORD_HASH_ALGORITHM &&
+    !extra &&
+    digest &&
+    Number.isSafeInteger(iterations) &&
+    iterations >= 10_000 &&
+    iterations <= 1_000_000
+  ) {
+    return { digest, iterations };
+  }
+  return { digest: value, iterations: LEGACY_PASSWORD_ITERATIONS };
+}
+
+export async function hashPassword(password: string) {
+  const saltBytes = crypto.getRandomValues(new Uint8Array(16));
+  const digest = await derivePasswordHash(
+    password,
+    saltBytes,
+    PASSWORD_ITERATIONS,
+  );
   return {
-    hash: bytesToBase64Url(new Uint8Array(bits)),
+    hash: `${PASSWORD_HASH_ALGORITHM}$${PASSWORD_ITERATIONS}$${digest}`,
     salt: bytesToBase64Url(saltBytes),
   };
 }
@@ -84,11 +113,16 @@ export async function verifyPassword(
   expectedHash: string,
   salt: string,
 ) {
-  const result = await hashPassword(password, salt);
-  if (result.hash.length !== expectedHash.length) return false;
+  const stored = readStoredPasswordHash(expectedHash);
+  const result = await derivePasswordHash(
+    password,
+    base64UrlToBytes(salt),
+    stored.iterations,
+  );
+  if (result.length !== stored.digest.length) return false;
   let mismatch = 0;
-  for (let index = 0; index < result.hash.length; index += 1) {
-    mismatch |= result.hash.charCodeAt(index) ^ expectedHash.charCodeAt(index);
+  for (let index = 0; index < result.length; index += 1) {
+    mismatch |= result.charCodeAt(index) ^ stored.digest.charCodeAt(index);
   }
   return mismatch === 0;
 }

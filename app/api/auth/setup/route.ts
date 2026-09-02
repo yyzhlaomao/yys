@@ -21,6 +21,15 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  try {
+    return await createFirstAdmin(request);
+  } catch (error) {
+    console.error('Administrator setup failed.', error);
+    return jsonError('服务器未能完成管理员创建，请稍后重试。', 500);
+  }
+}
+
+async function createFirstAdmin(request: Request) {
   const body = await readJson(request);
   if (!body) return jsonError('提交内容格式不正确。', 400);
   await ensureAppSchema();
