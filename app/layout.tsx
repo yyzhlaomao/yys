@@ -1,5 +1,7 @@
 import type { Metadata } from 'next';
 
+import { RELEASE } from '@/lib/release';
+
 import './globals.css';
 
 const socialImage =
@@ -28,7 +30,7 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="zh-Hans">
-      <body>{children}</body>
+      <body data-release={RELEASE}>{children}</body>
     </html>
   );
 }

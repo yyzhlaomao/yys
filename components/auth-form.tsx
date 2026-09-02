@@ -1,7 +1,5 @@
 'use client';
 
-/* oxlint-disable next/no-html-link-for-pages -- Full document navigation is more reliable for Vinext multi-route auth flows. */
-
 import {
   ArrowLeft,
   CheckCircle2,
@@ -11,7 +9,9 @@ import {
 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 
+import { NavigationButton } from '@/components/navigation-button';
 import { Button } from '@/components/ui/button';
+import { buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { TurnstileWidget } from '@/components/turnstile-widget';
@@ -126,12 +126,12 @@ export function AuthForm({ mode }: { mode: Mode }) {
         <p className="mt-3 text-muted-foreground">
           初始化入口已经关闭，请使用管理员账号登录。
         </p>
-        <a
+        <NavigationButton
           className="mt-7 inline-flex text-sm font-semibold text-primary hover:underline"
           href="/login"
         >
           前往登录
-        </a>
+        </NavigationButton>
       </AuthShell>
     );
   }
@@ -149,12 +149,12 @@ export function AuthForm({ mode }: { mode: Mode }) {
         <div className="mt-8 rounded-2xl border border-primary/25 bg-primary/5 p-5">
           <CheckCircle2 className="size-6 text-primary" />
           <p className="mt-3 font-semibold">{success}</p>
-          <a
+          <NavigationButton
             className="mt-4 inline-block text-sm text-primary hover:underline"
             href="/login"
           >
             返回登录
-          </a>
+          </NavigationButton>
         </div>
       ) : (
         <form
@@ -258,27 +258,27 @@ export function AuthForm({ mode }: { mode: Mode }) {
         </form>
       )}
       <div className="mt-7 flex items-center justify-between gap-4 border-t border-border pt-5 text-sm">
-        <a
-          className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground"
+        <NavigationButton
+          className={buttonVariants({ variant: 'ghost' })}
           href="/"
         >
           <ArrowLeft className="size-4" />
           返回画廊
-        </a>
+        </NavigationButton>
         {mode === 'login' ? (
-          <a
-            className="font-semibold text-primary hover:underline"
+          <NavigationButton
+            className={buttonVariants({ variant: 'link' })}
             href="/register"
           >
             申请账号
-          </a>
+          </NavigationButton>
         ) : mode === 'register' ? (
-          <a
-            className="font-semibold text-primary hover:underline"
+          <NavigationButton
+            className={buttonVariants({ variant: 'link' })}
             href="/login"
           >
             已有账号
-          </a>
+          </NavigationButton>
         ) : null}
       </div>
     </AuthShell>

@@ -1,7 +1,5 @@
 'use client';
 
-/* oxlint-disable next/no-html-link-for-pages -- Full document navigation avoids Vinext client-router stalls on Cloudflare. */
-
 import {
   ArrowUpFromLine,
   LogIn,
@@ -11,6 +9,7 @@ import {
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
+import { NavigationButton } from '@/components/navigation-button';
 import { buttonVariants } from '@/components/ui/button';
 import type { CurrentUser } from '@/lib/client-types';
 import { cn } from '@/lib/utils';
@@ -39,10 +38,10 @@ export function SiteHeader({
   return (
     <header className="sticky top-0 z-40 border-b border-border/70 bg-background/88 backdrop-blur-xl">
       <div className="mx-auto flex min-h-20 max-w-[1500px] items-center justify-between gap-4 px-5 py-3 sm:px-8 lg:px-12">
-        <a
+        <NavigationButton
           className="group flex items-center gap-3"
           href="/"
-          aria-label="光影集首页"
+          ariaLabel="光影集首页"
         >
           <span className="grid size-10 place-items-center rounded-2xl bg-primary text-primary-foreground shadow-[0_8px_24px_color-mix(in_oklch,var(--primary),transparent_72%)] transition-transform group-hover:-rotate-3">
             <Play className="size-4 fill-current" />
@@ -55,11 +54,11 @@ export function SiteHeader({
               Media Gallery
             </span>
           </span>
-        </a>
+        </NavigationButton>
 
         <nav className="flex items-center gap-2" aria-label="主导航">
           {user?.role === 'admin' && (
-            <a
+            <NavigationButton
               className={cn(
                 buttonVariants({ variant: 'ghost' }),
                 'hidden rounded-full sm:inline-flex',
@@ -68,7 +67,7 @@ export function SiteHeader({
             >
               <ShieldCheck data-icon="inline-start" />
               审核
-            </a>
+            </NavigationButton>
           )}
           {user ? (
             <>
@@ -91,7 +90,7 @@ export function SiteHeader({
               </button>
             </>
           ) : (
-            <a
+            <NavigationButton
               className={cn(
                 buttonVariants({ variant: 'ghost' }),
                 'rounded-full',
@@ -100,9 +99,9 @@ export function SiteHeader({
             >
               <LogIn data-icon="inline-start" />
               登录
-            </a>
+            </NavigationButton>
           )}
-          <a
+          <NavigationButton
             className={cn(buttonVariants(), 'h-10 rounded-full px-4 shadow-sm')}
             href={
               backToGallery
@@ -114,7 +113,7 @@ export function SiteHeader({
           >
             <ArrowUpFromLine data-icon="inline-start" />
             {backToGallery ? '返回画廊' : '上传作品'}
-          </a>
+          </NavigationButton>
         </nav>
       </div>
     </header>
