@@ -2,16 +2,31 @@
 
 import {
   AlertCircle,
+  ArrowLeft,
   CheckCircle2,
   FolderHeart,
+  Images,
   ImagePlus,
   LoaderCircle,
   Plus,
+  Trash2,
   UploadCloud,
+  Video,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
 import { SiteHeader } from '@/components/site-header';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogMedia,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
@@ -29,6 +44,10 @@ type UploadItem = {
   status: 'queued' | 'uploading' | 'done' | 'error';
   error?: string;
 };
+
+type DeleteTarget =
+  | { kind: 'collection'; item: CollectionItem }
+  | { kind: 'media'; item: MediaItem };
 
 const MAX_UPLOAD_BYTES = 95 * 1024 * 1024;
 const ACCEPTED_TYPES = new Set([
@@ -74,12 +93,25 @@ function uploadFile(
   });
 }
 
+async function readPayload<T>(response: Response): Promise<T> {
+  const text = await response.text();
+  if (!text) return {} as T;
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    return {} as T;
+  }
+}
+
 export function UploadWorkspace() {
   const inputRef = useRef<HTMLInputElement>(null);
   const coverRef = useRef<HTMLInputElement>(null);
   const [user, setUser] = useState<CurrentUser | null>(null);
   const [collections, setCollections] = useState<CollectionItem[]>([]);
   const [selectedCollection, setSelectedCollection] = useState('');
+  const [openedCollectionId, setOpenedCollectionId] = useState('');
+  const [collectionMedia, setCollectionMedia] = useState<MediaItem[]>([]);
+  const [selectedMediaId, setSelectedMediaId] = useState('');
   const [uploads, setUploads] = useState<UploadItem[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -89,6 +121,38 @@ export function UploadWorkspace() {
   const [description, setDescription] = useState('');
   const [cover, setCover] = useState<File | null>(null);
   const [isCreating, setIsCreating] = useState(false);
+  const [isLoadingMedia, setIsLoadingMedia] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+
+  const selectedCollectionItem = collections.find(
+    (collection) => collection.id === selectedCollection,
+  );
+  const openedCollection = collections.find(
+    (collection) => collection.id === openedCollectionId,
+  );
+  const selectedMedia = collectionMedia.find(
+    (media) => media.id === selectedMediaId,
+  );
+  const deleteTarget: DeleteTarget | null = openedCollection
+    ? selectedMedia
+      ? { kind: 'media', item: selectedMedia }
+      : null
+    : selectedCollectionItem
+      ? { kind: 'collection', item: selectedCollectionItem }
+      : null;
+  const canDeleteTarget = Boolean(
+    user &&
+    deleteTarget &&
+    (user.role === 'admin' ||
+      (deleteTarget.kind === 'collection'
+        ? deleteTarget.item.ownerId === user.id
+        : deleteTarget.item.uploaderId === user.id ||
+          openedCollection?.ownerId === user.id)),
+  );
+  const hasActiveUploads = uploads.some(
+    (item) => item.status === 'queued' || item.status === 'uploading',
+  );
 
   useEffect(() => {
     Promise.all([
@@ -167,6 +231,13 @@ export function UploadWorkspace() {
         await uploadFile(queued.file, selectedCollection, (progress) =>
           updateUpload(queued.id, { progress }),
         );
+        setCollections((current) =>
+          current.map((collection) =>
+            collection.id === selectedCollection
+              ? { ...collection, mediaCount: collection.mediaCount + 1 }
+              : collection,
+          ),
+        );
         updateUpload(queued.id, { status: 'done', progress: 100 });
       } catch (reason) {
         updateUpload(queued.id, {
@@ -226,6 +297,87 @@ export function UploadWorkspace() {
     }
   }
 
+  async function openCollection(collection: CollectionItem) {
+    setSelectedCollection(collection.id);
+    setOpenedCollectionId(collection.id);
+    setSelectedMediaId('');
+    setCollectionMedia([]);
+    setIsLoadingMedia(true);
+    setError('');
+    try {
+      const response = await fetch(
+        `/api/media?collectionId=${encodeURIComponent(collection.id)}`,
+        { cache: 'no-store' },
+      );
+      const payload = await readPayload<{
+        media?: MediaItem[];
+        error?: string;
+      }>(response);
+      if (!response.ok) {
+        throw new Error(payload.error ?? '无法读取收藏夹内容。');
+      }
+      setCollectionMedia(payload.media ?? []);
+    } catch (reason) {
+      setError(
+        reason instanceof Error ? reason.message : '无法读取收藏夹内容。',
+      );
+    } finally {
+      setIsLoadingMedia(false);
+    }
+  }
+
+  async function deleteSelected() {
+    if (!deleteTarget || !canDeleteTarget) return;
+    setIsDeleting(true);
+    setError('');
+    try {
+      const endpoint =
+        deleteTarget.kind === 'collection'
+          ? `/api/collections/${deleteTarget.item.id}`
+          : `/api/media/${deleteTarget.item.id}`;
+      const response = await fetch(endpoint, { method: 'DELETE' });
+      const payload = await readPayload<{ error?: string }>(response);
+      if (!response.ok) {
+        throw new Error(payload.error ?? '删除没有完成，请稍后重试。');
+      }
+
+      if (deleteTarget.kind === 'collection') {
+        const remaining = collections.filter(
+          (collection) => collection.id !== deleteTarget.item.id,
+        );
+        setCollections(remaining);
+        setSelectedCollection(remaining[0]?.id ?? '');
+        setOpenedCollectionId('');
+        setCollectionMedia([]);
+        setSelectedMediaId('');
+        setUploads([]);
+      } else {
+        const collectionId = deleteTarget.item.collectionId;
+        setCollectionMedia((current) =>
+          current.filter((media) => media.id !== deleteTarget.item.id),
+        );
+        setSelectedMediaId('');
+        if (collectionId) {
+          setCollections((current) =>
+            current.map((collection) =>
+              collection.id === collectionId
+                ? {
+                    ...collection,
+                    mediaCount: Math.max(0, collection.mediaCount - 1),
+                  }
+                : collection,
+            ),
+          );
+        }
+      }
+      setDeleteDialogOpen(false);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : '删除没有完成。');
+    } finally {
+      setIsDeleting(false);
+    }
+  }
+
   if (isLoading) {
     return (
       <main className="min-h-screen">
@@ -280,7 +432,112 @@ export function UploadWorkspace() {
           </div>
         )}
 
-        {user?.status === 'approved' && (
+        {user?.status === 'approved' && openedCollection && (
+          <section className="mt-10 rounded-[1.75rem] border border-border bg-card p-5 shadow-sm sm:p-7">
+            <div className="flex flex-wrap items-start justify-between gap-5">
+              <div>
+                <Button
+                  variant="ghost"
+                  className="-ml-2 rounded-full"
+                  type="button"
+                  onClick={() => {
+                    setOpenedCollectionId('');
+                    setSelectedMediaId('');
+                    setCollectionMedia([]);
+                    setError('');
+                  }}
+                >
+                  <ArrowLeft data-icon="inline-start" />
+                  返回上传界面
+                </Button>
+                <p className="eyebrow mt-5">收藏夹内容</p>
+                <h2 className="mt-2 text-2xl font-semibold sm:text-3xl">
+                  {openedCollection.name}
+                </h2>
+                <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
+                  {openedCollection.description ||
+                    `${collectionMedia.length} 件作品，单击作品后可删除。`}
+                </p>
+              </div>
+              <div className="rounded-full bg-secondary px-4 py-2 text-sm text-muted-foreground">
+                {collectionMedia.length} 件作品
+              </div>
+            </div>
+
+            {isLoadingMedia ? (
+              <div className="grid min-h-72 place-items-center">
+                <LoaderCircle className="size-7 animate-spin text-primary" />
+              </div>
+            ) : collectionMedia.length ? (
+              <div className="mt-7 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+                {collectionMedia.map((media) => {
+                  const isSelected = selectedMediaId === media.id;
+                  return (
+                    <button
+                      className={`group relative aspect-[4/3] overflow-hidden rounded-2xl border bg-secondary text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                        isSelected
+                          ? 'border-destructive ring-2 ring-destructive/40'
+                          : 'border-border hover:border-foreground/30'
+                      }`}
+                      type="button"
+                      key={media.id}
+                      aria-pressed={isSelected}
+                      onClick={() => {
+                        setSelectedMediaId(isSelected ? '' : media.id);
+                        setError('');
+                      }}
+                    >
+                      {media.type === 'image' ? (
+                        // oxlint-disable-next-line next/no-img-element
+                        <img
+                          className="size-full object-cover transition duration-300 group-hover:scale-[1.02]"
+                          src={media.url}
+                          alt={media.name}
+                          loading="lazy"
+                        />
+                      ) : (
+                        <>
+                          <video
+                            className="size-full object-cover"
+                            src={media.url}
+                            preload="metadata"
+                            muted
+                            playsInline
+                          />
+                          <span className="absolute left-3 top-3 grid size-9 place-items-center rounded-full bg-black/55 text-white backdrop-blur-sm">
+                            <Video className="size-4" />
+                          </span>
+                        </>
+                      )}
+                      <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent px-3 pb-3 pt-9 text-sm font-medium text-white">
+                        <span className="block truncate">{media.name}</span>
+                      </span>
+                      {isSelected && (
+                        <span className="absolute right-3 top-3 grid size-8 place-items-center rounded-full bg-destructive text-white shadow-sm">
+                          <CheckCircle2 className="size-4" />
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="mt-7 grid min-h-72 place-items-center rounded-2xl border border-dashed border-border bg-secondary/30 p-8 text-center">
+                <div>
+                  <span className="mx-auto grid size-14 place-items-center rounded-full bg-primary/10 text-primary">
+                    <Images className="size-6" />
+                  </span>
+                  <h3 className="mt-4 font-semibold">这个收藏夹还没有作品</h3>
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    返回上传界面，即可把图片或视频添加进来。
+                  </p>
+                </div>
+              </div>
+            )}
+          </section>
+        )}
+
+        {user?.status === 'approved' && !openedCollection && (
           <div className="mt-10 grid gap-7 lg:grid-cols-[0.82fr_1.18fr]">
             <section className="rounded-[1.75rem] border border-border bg-card p-5 shadow-sm sm:p-7">
               <div className="flex items-center justify-between gap-4">
@@ -369,6 +626,7 @@ export function UploadWorkspace() {
                         setSelectedCollection(collection.id);
                         setError('');
                       }}
+                      onDoubleClick={() => void openCollection(collection)}
                     >
                       <span className="collection-choice-cover">
                         {collection.coverUrl ? (
@@ -383,7 +641,7 @@ export function UploadWorkspace() {
                           {collection.name}
                         </strong>
                         <small className="text-muted-foreground">
-                          {collection.mediaCount} 件作品
+                          {collection.mediaCount} 件作品 · 双击查看
                         </small>
                       </span>
                       {selectedCollection === collection.id && (
@@ -478,6 +736,64 @@ export function UploadWorkspace() {
               )}
             </section>
           </div>
+        )}
+
+        {user?.status === 'approved' && deleteTarget && canDeleteTarget && (
+          <>
+            <Button
+              variant="destructive"
+              className="fixed bottom-6 right-6 z-40 h-12 rounded-full border border-destructive/20 bg-background px-5 shadow-xl shadow-black/15 backdrop-blur sm:bottom-8 sm:right-8"
+              type="button"
+              disabled={hasActiveUploads || isDeleting}
+              title={hasActiveUploads ? '请等待当前上传完成' : undefined}
+              onClick={() => setDeleteDialogOpen(true)}
+            >
+              <Trash2 data-icon="inline-start" />
+              {deleteTarget.kind === 'collection' ? '删除收藏夹' : '删除作品'}
+            </Button>
+
+            <AlertDialog
+              open={deleteDialogOpen}
+              onOpenChange={(open) => {
+                if (!isDeleting) setDeleteDialogOpen(open);
+              }}
+            >
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogMedia className="bg-destructive/10 text-destructive">
+                    <Trash2 />
+                  </AlertDialogMedia>
+                  <AlertDialogTitle>
+                    {deleteTarget.kind === 'collection'
+                      ? '确认删除这个收藏夹？'
+                      : '确认删除这件作品？'}
+                  </AlertDialogTitle>
+                  <AlertDialogDescription>
+                    {deleteTarget.kind === 'collection'
+                      ? `这会永久删除“${deleteTarget.item.name}”、收藏夹封面以及其中 ${deleteTarget.item.mediaCount} 件作品，删除后无法恢复。`
+                      : `这会永久删除“${deleteTarget.item.name}”，删除后无法恢复。`}
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel disabled={isDeleting}>
+                    取消
+                  </AlertDialogCancel>
+                  <AlertDialogAction
+                    variant="destructive"
+                    disabled={isDeleting}
+                    onClick={() => void deleteSelected()}
+                  >
+                    {isDeleting ? (
+                      <LoaderCircle className="animate-spin" />
+                    ) : (
+                      <Trash2 />
+                    )}
+                    确认删除
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </>
         )}
       </section>
     </main>

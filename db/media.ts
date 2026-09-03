@@ -3,6 +3,7 @@ export {
   findMedia,
   getBindings as getMediaBindings,
   insertMedia,
+  listCollectionMedia,
   listMedia,
   type MediaRecord,
   type MediaType,

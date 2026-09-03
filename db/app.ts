@@ -243,6 +243,24 @@ export async function listMedia(limit = 300) {
   return result.results;
 }
 
+export async function listCollectionMedia(collectionId: string) {
+  await ensureAppSchema();
+  const { db } = getBindings();
+  const result = await db
+    .prepare(`SELECT m.id, m.object_key, m.original_name, m.media_type,
+      m.content_type, m.size, m.uploader_id, u.display_name AS uploader_name,
+      m.collection_id, c.name AS collection_name, m.created_at,
+      COALESCE(m.updated_at, m.created_at) AS updated_at
+      FROM media m
+      LEFT JOIN users u ON u.id = m.uploader_id
+      LEFT JOIN collections c ON c.id = m.collection_id
+      WHERE m.collection_id = ?1
+      ORDER BY m.created_at DESC`)
+    .bind(collectionId)
+    .all<MediaRecord>();
+  return result.results;
+}
+
 export async function findMedia(id: string) {
   await ensureAppSchema();
   const { db } = getBindings();

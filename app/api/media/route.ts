@@ -2,6 +2,7 @@ import { findCollection } from '@/db/app';
 import {
   getMediaBindings,
   insertMedia,
+  listCollectionMedia,
   listMedia,
   type MediaRecord,
 } from '@/db/media';
@@ -59,9 +60,12 @@ function decodeFilename(value: string | null) {
   }
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const records = await listMedia();
+    const collectionId = new URL(request.url).searchParams.get('collectionId');
+    const records = collectionId
+      ? await listCollectionMedia(collectionId)
+      : await listMedia();
     return Response.json(
       { media: records.map(responseMedia) },
       { headers: { 'Cache-Control': 'no-store' } },
